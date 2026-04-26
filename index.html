@@ -2,50 +2,63 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>日文學習播放器</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.8; }
-        .active { color: #ff4500; font-weight: bold; background-color: #fff0f0; }
-        .sentence { cursor: pointer; padding: 5px; border-radius: 4px; display: block; }
-        #player-container { position: sticky; top: 0; background: white; padding: 10px 0; border-bottom: 1px solid #ddd; }
+        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif; padding: 20px; line-height: 1.8; background-color: #f9f9f9; color: #333; }
+        .sentence { cursor: pointer; padding: 12px; border-bottom: 1px solid #eee; transition: background 0.3s; display: block; border-radius: 8px; margin-bottom: 5px; }
+        .sentence:hover { background-color: #f0f0f0; }
+        .active { color: #d32f2f; font-weight: bold; background-color: #fff1f1; border-left: 5px solid #d32f2f; }
+        #player-container { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 2px solid #ddd; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 0 0 8px 8px; }
+        audio { width: 100%; }
+        .translation { color: #666; font-size: 0.9em; margin-top: 4px; }
     </style>
 </head>
 <body>
 
 <div id="player-container">
-    <audio id="audioPlayer" controls src="lesson.mp3"></audio>
+    <audio id="audioPlayer" controls src="./assets/lesson.mp3"></audio>
 </div>
 
-<div id="content">讀取中...</div>
+<div id="content" style="margin-top: 20px;">讀取中...</div>
 
 <script>
     const audio = document.getElementById('audioPlayer');
     const contentDiv = document.getElementById('content');
 
-    // 1. 讀取你產出的 JSON
-    fetch('lesson.json')
-        .then(res => res.json())
+    // 已修正 JSON 路徑為 assets 資料夾
+    fetch('./assets/lesson.json')
+        .then(res => {
+            if (!res.ok) throw new Error('找不到 lesson.json，請確認檔案是否在 assets 資料夾中');
+            return res.json();
+        })
         .then(data => {
             renderContent(data.content);
+        })
+        .catch(err => {
+            contentDiv.innerHTML = `<span style="color:red;">錯誤: ${err.message}</span>`;
         });
 
     function renderContent(sentences) {
         contentDiv.innerHTML = sentences.map((s, index) => `
             <div class="sentence" id="s-${index}" onclick="seekTo(${s.start})">
-                ${s.text} <br>
-                <small style="color: #666;">${s.translation}</small>
+                <div class="text">${s.text}</div>
+                <div class="translation">${s.translation}</div>
             </div>
         `).join('');
 
-        // 2. 監聽播放時間，自動標註當前句子
         audio.ontimeupdate = () => {
             const currentTime = audio.currentTime;
             sentences.forEach((s, index) => {
                 const el = document.getElementById(`s-${index}`);
-                // 如果播放時間超過該句開始時間，且小於下一句開始時間
                 const nextStart = sentences[index + 1] ? sentences[index + 1].start : 9999;
+                
                 if (currentTime >= s.start && currentTime < nextStart) {
-                    el.classList.add('active');
+                    if (!el.classList.contains('active')) {
+                        el.classList.add('active');
+                        // 自動捲動到正在朗讀的句子
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
                 } else {
                     el.classList.remove('active');
                 }
