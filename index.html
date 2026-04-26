@@ -3,14 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>日文學習閱讀器 - 修復版</title>
+    <title>日文學習閱讀器</title>
     <style>
-        body { font-family: sans-serif; line-height: 1.8; padding: 20px; max-width: 800px; margin: auto; background-color: #f4f4f7; }
-        #player-container { position: sticky; top: 0; background: #f4f4f7; padding: 20px 0; border-bottom: 2px solid #ddd; z-index: 100; text-align: center; }
-        audio { width: 100%; }
-        .sentence-item { padding: 15px; margin: 10px 0; border-radius: 8px; background: white; border: 1px solid #ddd; cursor: pointer; }
-        .sentence-item.active { background-color: #007bff; color: white; border-color: #0056b3; }
-        .jp-text { font-size: 1.3rem; display: block; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.8; padding: 20px; max-width: 800px; margin: auto; background-color: #f4f4f7; color: #333; }
+        h1 { text-align: center; color: #2c3e50; }
+        #player-container { position: sticky; top: 0; background: #f4f4f7; padding: 20px 0; border-bottom: 1px solid #ddd; z-index: 100; text-align: center; }
+        audio { width: 100%; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .sentence-list { margin-top: 30px; }
+        .sentence-item { 
+            padding: 20px; margin-bottom: 15px; border-radius: 12px; background: white; 
+            cursor: pointer; transition: all 0.2s ease; border: 1px solid #eee;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .sentence-item:hover { background-color: #f0f7ff; }
+        .sentence-item.active { background-color: #007bff; color: white; border-color: #0056b3; transform: scale(1.02); }
+        .jp-text { font-size: 1.4rem; font-weight: 500; display: block; }
     </style>
 </head>
 <body>
@@ -21,54 +28,55 @@
         <audio id="audio-player" controls src="lesson.mp3"></audio>
     </div>
 
-    <div id="content">讀取中...</div>
+    <div id="content" class="sentence-list">正在載入 Pikmin Bloom 課程內容...</div>
 
     <script>
         const audio = document.getElementById('audio-player');
         const contentDiv = document.getElementById('content');
         let lessonData = [];
 
+        // 讀取你的 lesson.json
         fetch('lesson.json?v=' + new Date().getTime())
             .then(res => res.json())
-            .then(rawData => {
-                // 【核心修復】自動判斷資料在哪裡
-                if (Array.isArray(rawData)) {
-                    lessonData = rawData;
-                } else {
-                    // 如果不是列表，試著找找看裡面有沒有任何一個欄位是列表
-                    const possibleList = Object.values(rawData).find(val => Array.isArray(val));
-                    if (possibleList) {
-                        lessonData = possibleList;
-                    } else {
-                        throw new Error("JSON 格式不正確，找不到列表資料。");
-                    }
+            .then(data => {
+                // 【關鍵修復】指定讀取 data.content 
+                lessonData = data.content; 
+                
+                if (!lessonData || !Array.isArray(lessonData)) {
+                    throw new Error("JSON 格式不符合預期，找不到 content 列表。");
                 }
-
+                
                 render(lessonData);
             })
             .catch(err => {
-                contentDiv.innerHTML = `<div style="color:red; padding:20px; background:#fff;">❌ 錯誤：${err.message}<br>請檢查 lesson.json 格式是否正確。</div>`;
+                contentDiv.innerHTML = `<div style="color:red; text-align:center; padding:20px;">❌ 讀取失敗: ${err.message}</div>`;
             });
 
         function render(data) {
             contentDiv.innerHTML = data.map((item, index) => `
-                <div class="sentence-item" id="sentence-${index}" onclick="audio.currentTime=${item.start};audio.play();">
-                    <span class="jp-text">${item.text || "文字欄位缺失"}</span>
+                <div class="sentence-item" id="sentence-${index}" onclick="jumpTo(${item.start})">
+                    <span class="jp-text">${item.text}</span>
                 </div>
             `).join('');
         }
 
+        window.jumpTo = (seconds) => {
+            audio.currentTime = seconds;
+            audio.play();
+        };
+
+        // 播放同步高亮
         audio.addEventListener('timeupdate', () => {
             const currentTime = audio.currentTime;
             lessonData.forEach((item, index) => {
                 const nextItem = lessonData[index + 1];
                 const isCurrent = currentTime >= item.start && (!nextItem || currentTime < nextItem.start);
                 const element = document.getElementById(`sentence-${index}`);
+                
                 if (element) {
                     if (isCurrent) {
-                        element.classList.add('active');
-                        // 避免頻繁捲動，只有切換句子時才動
-                        if (audio.paused === false) {
+                        if (!element.classList.contains('active')) {
+                            element.classList.add('active');
                             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                     } else {
