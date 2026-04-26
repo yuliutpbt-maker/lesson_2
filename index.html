@@ -3,73 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>日文學習播放器</title>
+    <title>I Japanese 練習器 (MP3版)</title>
     <style>
-        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif; padding: 20px; line-height: 1.8; background-color: #f9f9f9; color: #333; }
-        .sentence { cursor: pointer; padding: 12px; border-bottom: 1px solid #eee; transition: background 0.3s; display: block; border-radius: 8px; margin-bottom: 5px; }
-        .sentence:hover { background-color: #f0f0f0; }
-        .active { color: #d32f2f; font-weight: bold; background-color: #fff1f1; border-left: 5px solid #d32f2f; }
-        #player-container { position: sticky; top: 0; background: white; padding: 15px; border-bottom: 2px solid #ddd; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 0 0 8px 8px; }
-        audio { width: 100%; }
-        .translation { color: #666; font-size: 0.9em; margin-top: 4px; }
+        body { font-family: "Source Sans Pro", sans-serif; background-color: #f0f2f6; padding: 20px; color: #31333f; }
+        .stApp { max-width: 900px; margin: auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        h2 { color: #31333f; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+        
+        /* 模仿 Streamlit 按鈕樣式 */
+        .stButton { 
+            width: 100%; padding: 10px; margin: 4px 0; border: 1px solid #ddd; 
+            border-radius: 5px; background: white; cursor: pointer; text-align: left;
+            transition: 0.2s; font-size: 16px;
+        }
+        .stButton:hover { border-color: #ff4b4b; color: #ff4b4b; }
+        .stButton.active { background-color: #ff4b4b; color: white; border: none; }
+
+        .current-box { 
+            background-color: #f8f9fb; border: 1px solid #dfe1e6; 
+            padding: 20px; border-radius: 10px; margin: 20px 0; text-align: center;
+        }
+        .current-text { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
+        
+        .action-row { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-action { 
+            flex: 1; padding: 12px; background-color: #0e1117; color: white; 
+            border: none; border-radius: 5px; cursor: pointer; font-weight: bold;
+        }
+        .btn-action:hover { opacity: 0.8; }
+        
+        audio { width: 100%; margin-bottom: 20px; border-radius: 5px; }
+        .divider { border-top: 1px solid #eee; margin: 30px 0; }
     </style>
 </head>
 <body>
 
-<div id="player-container">
-    <audio id="audioPlayer" controls src="./assets/lesson.mp3"></audio>
+<div class="stApp">
+    <h2>🎯 選擇練習課目</h2>
+    <div id="status" style="font-size: 14px; color: #666;">載入中...</div>
+    
+    <div id="sentence-list"></div>
+
+    <div class="divider"></div>
+
+    <div id="practice-zone" style="display:none;">
+        <p style="color: #ff4b4b; font-weight: bold; margin-bottom: 5px;">🎯 當前練習：</p>
+        <div class="current-box">
+            <div class="current-text" id="display-jp"></div>
+            <div style="color: #666;" id="display-tw"></div>
+        </div>
+
+        <div class="action-row">
+            <button class="btn-action" onclick="playCurrent()">🔈 重複聽這句</button>
+            <button class="btn-action" onclick="nextStep()">⏭️ 下一句</button>
+        </div>
+    </div>
+
+    <audio id="audioPlayer" src="./assets/lesson.mp3"></audio>
 </div>
 
-<div id="content" style="margin-top: 20px;">讀取中...</div>
-
 <script>
+    let sentences = [];
+    let currentIndex = 0;
     const audio = document.getElementById('audioPlayer');
-    const contentDiv = document.getElementById('content');
 
-    // 已修正 JSON 路徑為 assets 資料夾
+    // 1. 讀取教材
     fetch('./assets/lesson.json')
-        .then(res => {
-            if (!res.ok) throw new Error('找不到 lesson.json，請確認檔案是否在 assets 資料夾中');
-            return res.json();
-        })
+        .then(res => res.json())
         .then(data => {
-            renderContent(data.content);
+            sentences = data.content;
+            document.getElementById('status').innerText = "已載入：" + sentences.length + " 句子";
+            renderList();
+            updateDisplay(0, false); // 初始顯示第一句但不自動播放
         })
         .catch(err => {
-            contentDiv.innerHTML = `<span style="color:red;">錯誤: ${err.message}</span>`;
+            document.getElementById('status').innerText = "錯誤：找不到教材或音檔";
         });
 
-    function renderContent(sentences) {
-        contentDiv.innerHTML = sentences.map((s, index) => `
-            <div class="sentence" id="s-${index}" onclick="seekTo(${s.start})">
-                <div class="text">${s.text}</div>
-                <div class="translation">${s.translation}</div>
-            </div>
+    function renderList() {
+        const listDiv = document.getElementById('sentence-list');
+        listDiv.innerHTML = sentences.map((s, i) => `
+            <button class="stButton ${i === currentIndex ? 'active' : ''}" onclick="updateDisplay(${i})">
+                ${s.text}
+            </button>
         `).join('');
-
-        audio.ontimeupdate = () => {
-            const currentTime = audio.currentTime;
-            sentences.forEach((s, index) => {
-                const el = document.getElementById(`s-${index}`);
-                const nextStart = sentences[index + 1] ? sentences[index + 1].start : 9999;
-                
-                if (currentTime >= s.start && currentTime < nextStart) {
-                    if (!el.classList.contains('active')) {
-                        el.classList.add('active');
-                        // 自動捲動到正在朗讀的句子
-                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                } else {
-                    el.classList.remove('active');
-                }
-            });
-        };
     }
 
-    function seekTo(time) {
-        audio.currentTime = time;
+    function updateDisplay(index, autoPlay = true) {
+        currentIndex = index;
+        const s = sentences[currentIndex];
+        
+        document.getElementById('practice-zone').style.display = 'block';
+        document.getElementById('display-jp').innerText = s.text;
+        document.getElementById('display-tw').innerText = s.translation;
+        
+        renderList();
+
+        if (autoPlay) {
+            playCurrent();
+        }
+    }
+
+    function playCurrent() {
+        const s = sentences[currentIndex];
+        const nextS = sentences[currentIndex + 1];
+        
+        audio.currentTime = s.start;
         audio.play();
+
+        // 核心邏輯：播到下一句的開始時間就停止
+        const stopTime = nextS ? nextS.start : audio.duration;
+        
+        const checkStop = () => {
+            if (audio.currentTime >= stopTime) {
+                audio.pause();
+                audio.removeEventListener('timeupdate', checkStop);
+            }
+        };
+        audio.addEventListener('timeupdate', checkStop);
+    }
+
+    function nextStep() {
+        currentIndex = (currentIndex + 1) % sentences.length;
+        updateDisplay(currentIndex);
     }
 </script>
+
 </body>
 </html>
