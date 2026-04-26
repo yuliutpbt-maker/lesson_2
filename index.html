@@ -3,20 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>日文學習閱讀器</title>
+    <title>日文學習閱讀器 - 調試版</title>
     <style>
         body { font-family: sans-serif; line-height: 1.8; padding: 20px; max-width: 800px; margin: auto; background-color: #f4f4f7; }
-        h1 { text-align: center; color: #2c3e50; }
-        #player-container { position: sticky; top: 0; background: #f4f4f7; padding: 20px 0; border-bottom: 1px solid #ddd; z-index: 100; text-align: center; }
-        audio { width: 100%; border-radius: 8px; }
-        .sentence-list { margin-top: 30px; }
-        .sentence-item { 
-            padding: 20px; margin-bottom: 15px; border-radius: 12px; background: white; 
-            cursor: pointer; transition: all 0.2s ease; border: 1px solid #eee;
-        }
-        .sentence-item.active { background-color: #007bff; color: white; border-color: #0056b3; }
-        .jp-text { font-size: 1.4rem; font-weight: 500; display: block; }
-        .error-msg { color: red; background: #ffdada; padding: 15px; border-radius: 8px; text-align: center; }
+        #player-container { position: sticky; top: 0; background: #f4f4f7; padding: 20px; border-bottom: 2px solid #ddd; z-index: 100; text-align: center; }
+        audio { width: 100%; }
+        .sentence-item { padding: 15px; margin: 10px 0; border-radius: 8px; background: white; border: 1px solid #ddd; cursor: pointer; }
+        .sentence-item.active { background-color: #007bff; color: white; }
+        .debug-info { background: #333; color: #0f0; padding: 10px; font-family: monospace; font-size: 12px; margin-top: 20px; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -27,56 +21,64 @@
         <audio id="audio-player" controls src="lesson.mp3"></audio>
     </div>
 
-    <div id="content" class="sentence-list">
-        <p style="text-align:center;">正在載入日文內容...</p>
-    </div>
+    <div id="content">正在嘗試讀取資料...</div>
+
+    <div id="debug" class="debug-info">系統狀態：準備中...</div>
 
     <script>
         const audio = document.getElementById('audio-player');
         const contentDiv = document.getElementById('content');
+        const debugDiv = document.getElementById('debug');
         let lessonData = [];
 
-        // 讀取 JSON 並自動處理錯誤
-        fetch('lesson.json')
-            .then(response => {
-                if (!response.ok) throw new Error('找不到 lesson.json 檔案，請確認它是否跟網頁放在一起。');
-                return response.json();
+        function log(msg) { debugDiv.innerText += "\n> " + msg; }
+
+        // 自動抓取 lesson.json
+        fetch('./lesson.json?v=' + new Date().getTime()) // 加上時間戳記防止快取
+            .then(res => {
+                log("連線狀態: " + res.status);
+                if (!res.ok) throw new Error("找不到檔案 (404)");
+                return res.json();
             })
             .then(data => {
+                log("成功抓到 JSON，資料筆數: " + data.length);
                 lessonData = data;
-                if (data.length === 0) throw new Error('lesson.json 裡面沒有內容。');
                 
-                // 生成日文列表
-                contentDiv.innerHTML = data.map((item, index) => `
-                    <div class="sentence-item" id="sentence-${index}" onclick="seekAudio(${item.start})">
-                        <span class="jp-text">${item.text}</span>
-                    </div>
-                `).join('');
+                if (data.length === 0) {
+                    contentDiv.innerHTML = "JSON 是空的！";
+                    return;
+                }
+
+                // 自動判斷欄位名稱 (相容 text 或其他名稱)
+                const firstItem = data[0];
+                log("第一筆內容範例: " + JSON.stringify(firstItem));
+
+                contentDiv.innerHTML = data.map((item, index) => {
+                    // 自動抓取可能是文字的欄位
+                    const text = item.text || item.japanese || item.content || "欄位名稱不符";
+                    return `
+                        <div class="sentence-item" id="sentence-${index}" onclick="audio.currentTime=${item.start};audio.play();">
+                            <span style="font-size:1.3rem;">${text}</span>
+                        </div>
+                    `;
+                }).join('');
             })
             .catch(err => {
-                contentDiv.innerHTML = `<div class="error-msg">❌ 錯誤：${err.message}</div>`;
+                log("發生錯誤: " + err.message);
+                contentDiv.innerHTML = `<div style="color:red">❌ 錯誤：${err.message}</div>`;
             });
 
-        // 點擊文字跳轉
-        window.seekAudio = (seconds) => {
-            audio.currentTime = seconds;
-            audio.play();
-        };
-
-        // 自動高亮
+        // 播放同步
         audio.addEventListener('timeupdate', () => {
             const currentTime = audio.currentTime;
             lessonData.forEach((item, index) => {
                 const nextItem = lessonData[index + 1];
                 const isCurrent = currentTime >= item.start && (!nextItem || currentTime < nextItem.start);
                 const element = document.getElementById(`sentence-${index}`);
-                if (element) {
-                    if (isCurrent) {
-                        element.classList.add('active');
-                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    } else {
-                        element.classList.remove('active');
-                    }
+                if (element && isCurrent) {
+                    element.classList.add('active');
+                } else if (element) {
+                    element.classList.remove('active');
                 }
             });
         });
